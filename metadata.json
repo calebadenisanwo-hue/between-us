@@ -1,0 +1,6 @@
+{
+  "name": "Between Us",
+  "description": "A cozy virtual space for long-distance couples Kola & Joy to hang out, play interactive games, answer deep questions, nurture a shared plant, and feel close together.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
