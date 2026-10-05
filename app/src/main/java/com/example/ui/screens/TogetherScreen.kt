@@ -20,8 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.BucketItem
 import com.example.ui.theme.Amber
 import com.example.ui.theme.Cream
 import com.example.ui.theme.CreamDeep
@@ -60,29 +61,20 @@ import com.example.ui.theme.PlumDeep
 import com.example.ui.theme.Rose
 import com.example.ui.theme.Sage
 
-data class DateEvent(
-    val title: String,
-    val dayOfWeek: String,
-    val dayOfMonth: Int,
-    val myTime: String,
-    val partnerTime: String
-)
-
 @Composable
 fun TogetherScreen(
     daysUntilVisit: Int = 23,
     partnerName: String = "Joy",
-    onPlanDate: (String) -> Unit = {},
+    eventsList: List<BucketItem> = emptyList(),
+    onPlanDate: (title: String, category: String, targetDate: String) -> Unit = { _, _, _ -> },
+    onToggleEventCompleted: (BucketItem) -> Unit = {},
+    onDeleteEvent: (Int) -> Unit = {},
+    onChangeVisitDays: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showPlanDateDialog by remember { mutableStateOf(false) }
-
-    val events = remember {
-        mutableListOf(
-            DateEvent("Cook-along night", "FRI", 9, "You 8:00 PM", "$partnerName 2:00 PM"),
-            DateEvent("Game night", "SUN", 18, "You 7:00 PM", "$partnerName 1:00 PM")
-        )
-    }
+    var showChangeVisitDialog by remember { mutableStateOf(false) }
+    var currentVisitDays by remember { mutableIntStateOf(daysUntilVisit) }
 
     Box(
         modifier = modifier
@@ -123,7 +115,7 @@ fun TogetherScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "$daysUntilVisit",
+                                    text = "$currentVisitDays",
                                     fontFamily = FontFamily.Serif,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 44.sp,
@@ -170,7 +162,6 @@ fun TogetherScreen(
                                     .height(2.dp)
                                     .background(InkMuted.copy(alpha = 0.3f))
                             )
-                            // Mini walking couple avatars icon
                             Text(text = "👫", fontSize = 18.sp, modifier = Modifier.padding(horizontal = 4.dp))
                             Box(
                                 modifier = Modifier
@@ -189,14 +180,16 @@ fun TogetherScreen(
                             fontWeight = FontWeight.SemiBold,
                             color = Ink,
                             textDecoration = TextDecoration.Underline,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showChangeVisitDialog = true },
                             textAlign = TextAlign.Center
                         )
                     }
                 }
             }
 
-            // 2. Shared Calendar Card (Screen 9: October 2026)
+            // 2. Shared Calendar Card (October 2026)
             item {
                 Surface(
                     shape = RoundedCornerShape(20.dp),
@@ -205,7 +198,6 @@ fun TogetherScreen(
                     modifier = Modifier.fillMaxWidth().testTag("together_calendar_card")
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        // Month Header with Prev/Next
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -227,7 +219,6 @@ fun TogetherScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Days of week
                         val daysOfWeek = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -247,7 +238,6 @@ fun TogetherScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Calendar Grid Weeks
                         val calendarRows = listOf(
                             listOf("", "1", "2", "3", "4", "5", "6"),
                             listOf("7", "8", "9", "10", "11", "12", "13"),
@@ -263,6 +253,8 @@ fun TogetherScreen(
                             ) {
                                 week.forEach { dayStr ->
                                     val isVisitDay = dayStr == "28"
+                                    val hasEvent = dayStr == "9" || dayStr == "18" || eventsList.any { it.targetDate?.contains(dayStr) == true }
+
                                     Box(
                                         modifier = Modifier
                                             .size(36.dp)
@@ -277,12 +269,8 @@ fun TogetherScreen(
                                                 fontWeight = if (isVisitDay) FontWeight.Bold else FontWeight.Normal,
                                                 color = if (isVisitDay) Rose else Ink
                                             )
-                                            // Dots indicator
-                                            if (dayStr == "9" || dayStr == "18") {
-                                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                    Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Amber))
-                                                    Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Sage))
-                                                }
+                                            if (hasEvent) {
+                                                Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Amber))
                                             }
                                         }
                                     }
@@ -292,7 +280,6 @@ fun TogetherScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Legend row: ● Date night  ● Game night  ● Visit
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly
@@ -317,7 +304,7 @@ fun TogetherScreen(
                 }
             }
 
-            // 3. "Coming Up" Section (Screen 9)
+            // 3. "Coming up" Section (Screen 9)
             item {
                 Text(
                     text = "Coming up",
@@ -328,7 +315,8 @@ fun TogetherScreen(
                 )
             }
 
-            items(events) { ev ->
+            // Mockup Preset 1: Cook-along night
+            item {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Cream,
@@ -339,7 +327,6 @@ fun TogetherScreen(
                         modifier = Modifier.padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Date badge
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = CreamDeep,
@@ -350,30 +337,117 @@ fun TogetherScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                Text(text = ev.dayOfWeek, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = InkMuted)
-                                Text(text = "${ev.dayOfMonth}", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+                                Text(text = "FRI", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = InkMuted)
+                                Text(text = "9", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
                             }
                         }
-
                         Spacer(modifier = Modifier.width(12.dp))
-
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = ev.title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                            Text(text = "Cook-along night", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
                             Spacer(modifier = Modifier.height(2.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = ev.myTime, fontSize = 11.sp, color = InkMuted)
-                                Text(text = ev.partnerTime, fontSize = 11.sp, color = InkMuted)
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "You 8:00 PM (Manchester)", fontSize = 11.sp, color = InkMuted)
+                                Text(text = "$partnerName 2:00 PM (Houston)", fontSize = 11.sp, color = InkMuted)
                             }
                         }
                     }
                 }
             }
 
+            // Mockup Preset 2: Game night
             item {
-                // Primary Button: "Plan a date" (Screen 9)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Cream,
+                    tonalElevation = 3.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = CreamDeep,
+                            modifier = Modifier.size(46.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(text = "SUN", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = InkMuted)
+                                Text(text = "18", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Game night", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "You 7:00 PM (Manchester)", fontSize = 11.sp, color = InkMuted)
+                                Text(text = "$partnerName 1:00 PM (Houston)", fontSize = 11.sp, color = InkMuted)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Custom Database Items
+            items(eventsList) { item ->
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Cream,
+                    tonalElevation = 3.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (item.isCompleted) Sage.copy(alpha = 0.3f) else CreamDeep,
+                            modifier = Modifier
+                                .size(46.dp)
+                                .clickable { onToggleEventCompleted(item) }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                if (item.isCompleted) {
+                                    Icon(Icons.Default.Check, contentDescription = "Done", tint = Sage)
+                                } else {
+                                    Text(text = "DATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.title,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = Ink,
+                                textDecoration = if (item.isCompleted) TextDecoration.LineThrough else TextDecoration.None
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "${item.category} · ${item.targetDate ?: "Coming up"}",
+                                fontSize = 11.sp,
+                                color = InkMuted
+                            )
+                        }
+
+                        IconButton(onClick = { onDeleteEvent(item.id) }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = InkMuted, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
+            item {
+                // Primary Button: "Plan a date"
                 Button(
                     onClick = { showPlanDateDialog = true },
                     modifier = Modifier
@@ -395,8 +469,11 @@ fun TogetherScreen(
         }
     }
 
+    // Plan Date Dialog
     if (showPlanDateDialog) {
         var dateTitle by remember { mutableStateOf("") }
+        var dateCategory by remember { mutableStateOf("Date Night") }
+
         AlertDialog(
             onDismissRequest = { showPlanDateDialog = false },
             title = {
@@ -407,17 +484,66 @@ fun TogetherScreen(
                 )
             },
             text = {
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Set an event to look forward to (e.g. Movie night, Cooking session).",
+                        text = "Set an event to look forward to. Times will convert automatically between your two cities.",
                         style = MaterialTheme.typography.bodySmall,
                         color = InkMuted
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
                     OutlinedTextField(
                         value = dateTitle,
                         onValueChange = { dateTitle = it },
-                        placeholder = { Text("e.g. Afrobeats Dance & Dinner") },
+                        placeholder = { Text("e.g. Movie night & Ice cream") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    // Category Chips
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Date Night", "Cook-Along", "Game Night").forEach { cat ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (dateCategory == cat) Amber else CreamDeep,
+                                modifier = Modifier.clickable { dateCategory = cat }
+                            ) {
+                                Text(cat, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (dateTitle.isNotBlank()) {
+                            onPlanDate(dateTitle, dateCategory, "Fri, Oct 23 · You 8:00 PM | $partnerName 2:00 PM")
+                            showPlanDateDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Amber),
+                    enabled = dateTitle.isNotBlank()
+                ) {
+                    Text("Add to Calendar", color = Ink, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPlanDateDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Change Visit Countdown Dialog
+    if (showChangeVisitDialog) {
+        var newDaysText by remember { mutableStateOf("$currentVisitDays") }
+        AlertDialog(
+            onDismissRequest = { showChangeVisitDialog = false },
+            title = { Text("Next Reunion Date", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Enter days remaining until your next visit in the same room:", fontSize = 12.sp, color = InkMuted)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newDaysText,
+                        onValueChange = { newDaysText = it.filter { ch -> ch.isDigit() } },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -426,18 +552,18 @@ fun TogetherScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (dateTitle.isNotBlank()) {
-                            onPlanDate(dateTitle)
-                            showPlanDateDialog = false
-                        }
+                        val d = newDaysText.toIntOrNull() ?: currentVisitDays
+                        currentVisitDays = d
+                        onChangeVisitDays(d)
+                        showChangeVisitDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Amber)
                 ) {
-                    Text("Add to Calendar", color = Ink, fontWeight = FontWeight.Bold)
+                    Text("Save", color = Ink, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showPlanDateDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showChangeVisitDialog = false }) { Text("Cancel") }
             }
         )
     }

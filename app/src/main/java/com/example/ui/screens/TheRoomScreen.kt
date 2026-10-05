@@ -320,96 +320,199 @@ fun TheRoomScreen(
                     }
                     drawPath(rugPath, color = Color(0xFFE5D5B8))
 
-                    // 5. Living Room Furniture: Sofa (Left) & Beanbag (Right)
+                    // 5. Living Room Furniture: Mustard Sofa (Left) & Teal Beanbag (Right)
                     // Mustard Sofa on the left
                     val sofaX = w * 0.22f
-                    val sofaY = floorTop + 35f
+                    val sofaY = floorTop + 30f
+                    // Sofa backrest
+                    drawRoundRect(
+                        color = Color(0xFFDCA038),
+                        topLeft = Offset(sofaX - 60f, sofaY - 20f),
+                        size = androidx.compose.ui.geometry.Size(120f, 40f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(14f)
+                    )
+                    // Sofa main cushion
                     drawRoundRect(
                         color = JoyMarigold,
-                        topLeft = Offset(sofaX - 55f, sofaY),
-                        size = androidx.compose.ui.geometry.Size(110f, 65f),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(18f)
+                        topLeft = Offset(sofaX - 58f, sofaY + 10f),
+                        size = androidx.compose.ui.geometry.Size(116f, 55f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(16f)
                     )
-                    // Throw blanket over sofa arm
+                    // Wooden sofa legs
+                    drawRect(color = Color(0xFF4A3319), topLeft = Offset(sofaX - 52f, sofaY + 62f), size = androidx.compose.ui.geometry.Size(8f, 14f))
+                    drawRect(color = Color(0xFF4A3319), topLeft = Offset(sofaX + 44f, sofaY + 62f), size = androidx.compose.ui.geometry.Size(8f, 14f))
+                    // Woven throw blanket draped over sofa arm
                     drawRoundRect(
-                        color = CreamDeep,
-                        topLeft = Offset(sofaX - 58f, sofaY + 8f),
-                        size = androidx.compose.ui.geometry.Size(30f, 45f),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f)
+                        color = Cream,
+                        topLeft = Offset(sofaX - 60f, sofaY + 8f),
+                        size = androidx.compose.ui.geometry.Size(28f, 48f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f)
                     )
 
                     // Teal Beanbag on the right
-                    val beanX = w * 0.72f
-                    val beanY = floorTop + 65f
+                    val beanX = w * 0.74f
+                    val beanY = floorTop + 55f
+                    // Shadow under beanbag
+                    drawOval(
+                        color = Color(0x33000000),
+                        topLeft = Offset(beanX - 52f, beanY + 45f),
+                        size = androidx.compose.ui.geometry.Size(104f, 28f)
+                    )
+                    // Main beanbag body
                     drawOval(
                         color = KolaTeal,
-                        topLeft = Offset(beanX - 45f, beanY),
-                        size = androidx.compose.ui.geometry.Size(90f, 70f)
+                        topLeft = Offset(beanX - 50f, beanY - 10f),
+                        size = androidx.compose.ui.geometry.Size(100f, 75f)
+                    )
+                    // Beanbag crease highlight
+                    drawArc(
+                        color = Color(0x33FFFFFF),
+                        startAngle = 30f,
+                        sweepAngle = 120f,
+                        useCenter = false,
+                        topLeft = Offset(beanX - 40f, beanY + 5f),
+                        size = androidx.compose.ui.geometry.Size(80f, 45f),
+                        style = Stroke(width = 3f)
                     )
 
                     // 6. Central Table & Warm Glowing Lamp
                     val tableX = w * 0.5f
                     val tableY = floorTop + 65f
-                    // Round wood side table
+                    // Round wood side table with leg shadow
+                    drawOval(
+                        color = Color(0xFF53351C),
+                        topLeft = Offset(tableX - 30f, tableY),
+                        size = androidx.compose.ui.geometry.Size(60f, 34f)
+                    )
+                    drawRect(
+                        color = Color(0xFF382312),
+                        topLeft = Offset(tableX - 5f, tableY + 20f),
+                        size = androidx.compose.ui.geometry.Size(10f, 30f)
+                    )
+                    // Tabletop rim highlight
                     drawOval(
                         color = Color(0xFF6B4423),
-                        topLeft = Offset(tableX - 25f, tableY),
-                        size = androidx.compose.ui.geometry.Size(50f, 32f)
+                        topLeft = Offset(tableX - 28f, tableY + 2f),
+                        size = androidx.compose.ui.geometry.Size(56f, 30f)
                     )
+
                     // Lamp base & warm glowing shade
                     val lampCenter = Offset(tableX, tableY - 15f)
                     val glowScale = lampGlow.value
                     // Expanding warm ambient glow ring
                     drawCircle(
                         brush = Brush.radialGradient(
-                            colors = listOf(Amber.copy(alpha = 0.55f), Amber.copy(alpha = 0.05f), Color.Transparent),
-                            radius = 65.dp.toPx() * glowScale
+                            colors = listOf(Amber.copy(alpha = 0.65f), Amber.copy(alpha = 0.15f), Color.Transparent),
+                            radius = 75.dp.toPx() * glowScale
                         ),
-                        radius = 65.dp.toPx() * glowScale,
+                        radius = 75.dp.toPx() * glowScale,
                         center = lampCenter
                     )
-                    // Lamp shade
-                    drawRoundRect(
-                        color = Amber,
-                        topLeft = Offset(lampCenter.x - 14f, lampCenter.y - 20f),
-                        size = androidx.compose.ui.geometry.Size(28f, 22f),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f)
+                    // Brass lamp stem
+                    drawLine(
+                        color = Color(0xFFD4AF37),
+                        start = Offset(lampCenter.x, lampCenter.y + 12f),
+                        end = Offset(lampCenter.x, lampCenter.y - 10f),
+                        strokeWidth = 4f
                     )
-
-                    // 7. Avatars in Scene
-                    // Joy on Sofa
-                    if (!partnerIsAsleep) {
-                        // Joy sitting on sofa sipping tea
-                        drawCircle(color = Color(0xFF98603A), radius = 18f, center = Offset(sofaX + 8f, sofaY - 5f))
-                        // Braids bun
-                        drawCircle(color = Color(0xFF1B1B1B), radius = 22f, center = Offset(sofaX + 8f, sofaY - 14f))
-                        // Steaming mug
-                        drawRoundRect(color = Cream, topLeft = Offset(sofaX - 2f, sofaY + 12f), size = androidx.compose.ui.geometry.Size(12f, 14f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f))
-                    } else {
-                        // Joy asleep under blanket with "z z z"
-                        drawRoundRect(
-                            color = CreamDeep,
-                            topLeft = Offset(sofaX - 45f, sofaY + 10f),
-                            size = androidx.compose.ui.geometry.Size(90f, 40f),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(14f)
-                        )
-                        // Sleeping head on pillow
-                        drawCircle(color = Color(0xFF98603A), radius = 16f, center = Offset(sofaX - 25f, sofaY + 8f))
-                    }
-
-                    // Kola in Beanbag (working on laptop or relaxing)
-                    drawCircle(color = Color(0xFF7F4D2E), radius = 18f, center = Offset(beanX, beanY - 12f))
-                    // Fade hair
-                    drawCircle(color = Color(0xFF1B1B1B), radius = 19f, center = Offset(beanX, beanY - 18f))
-                    // Laptop open on lap
-                    val lapPath = Path().apply {
-                        moveTo(beanX - 16f, beanY + 15f)
-                        lineTo(beanX + 16f, beanY + 15f)
-                        lineTo(beanX + 14f, beanY - 2f)
-                        lineTo(beanX - 14f, beanY - 2f)
+                    // Lamp shade (Warm Amber trapezoid)
+                    val shadePath = Path().apply {
+                        moveTo(lampCenter.x - 14f, lampCenter.y - 28f)
+                        lineTo(lampCenter.x + 14f, lampCenter.y - 28f)
+                        lineTo(lampCenter.x + 20f, lampCenter.y - 6f)
+                        lineTo(lampCenter.x - 20f, lampCenter.y - 6f)
                         close()
                     }
-                    drawPath(lapPath, color = Color(0xFFB5BAC9))
+                    drawPath(shadePath, color = Amber)
+
+                    // 7. Characters (Clearly visible, charming, and distinct)
+                    // JOY on the Sofa (Left)
+                    if (!partnerIsAsleep) {
+                        // Joy's body & knit outfit
+                        drawRoundRect(
+                            color = Color(0xFF556B2F), // Olive knit sweater
+                            topLeft = Offset(sofaX - 16f, sofaY - 5f),
+                            size = androidx.compose.ui.geometry.Size(32f, 36f),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(10f)
+                        )
+                        // Rust trousers
+                        drawRoundRect(
+                            color = Color(0xFFB85D36),
+                            topLeft = Offset(sofaX - 12f, sofaY + 26f),
+                            size = androidx.compose.ui.geometry.Size(24f, 26f),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f)
+                        )
+                        // Head: Warm brown skin
+                        drawCircle(color = Color(0xFF98603A), radius = 20f, center = Offset(sofaX, sofaY - 22f))
+                        // Braided high bun
+                        drawCircle(color = Color(0xFF151515), radius = 22f, center = Offset(sofaX, sofaY - 36f))
+                        drawCircle(color = Color(0xFF151515), radius = 12f, center = Offset(sofaX, sofaY - 52f))
+                        // Gold hoop earring
+                        drawCircle(color = Color(0xFFD4AF37), radius = 4f, center = Offset(sofaX + 18f, sofaY - 20f), style = Stroke(width = 1.5f))
+                        // Cute friendly eyes with sparkle
+                        drawCircle(color = Color.White, radius = 4f, center = Offset(sofaX + 7f, sofaY - 22f))
+                        drawCircle(color = Ink, radius = 2.5f, center = Offset(sofaX + 8f, sofaY - 22f))
+                        // Steaming ceramic mug
+                        drawRoundRect(color = Cream, topLeft = Offset(sofaX - 2f, sofaY + 8f), size = androidx.compose.ui.geometry.Size(14f, 16f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f))
+                    } else {
+                        // Joy asleep under cozy blanket with pillow
+                        drawRoundRect(
+                            color = Color(0xFFFFF8EE),
+                            topLeft = Offset(sofaX - 48f, sofaY - 10f),
+                            size = androidx.compose.ui.geometry.Size(28f, 24f),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f)
+                        )
+                        // Sleeping head on pillow
+                        drawCircle(color = Color(0xFF98603A), radius = 18f, center = Offset(sofaX - 35f, sofaY - 6f))
+                        drawCircle(color = Color(0xFF151515), radius = 18f, center = Offset(sofaX - 44f, sofaY - 10f))
+                        // Fleece blanket covering body
+                        drawRoundRect(
+                            color = CreamDeep,
+                            topLeft = Offset(sofaX - 30f, sofaY + 2f),
+                            size = androidx.compose.ui.geometry.Size(85f, 48f),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(14f)
+                        )
+                    }
+
+                    // KOLA in the Beanbag (Right)
+                    // Kola's relaxed body in mustard sweater & denim
+                    drawRoundRect(
+                        color = Color(0xFFE0A526), // Mustard knit
+                        topLeft = Offset(beanX - 18f, beanY - 14f),
+                        size = androidx.compose.ui.geometry.Size(36f, 38f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f)
+                    )
+                    // Indigo jeans
+                    drawRoundRect(
+                        color = Color(0xFF2B3A67),
+                        topLeft = Offset(beanX - 16f, beanY + 20f),
+                        size = androidx.compose.ui.geometry.Size(32f, 28f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f)
+                    )
+                    // Head: Warm deep brown skin
+                    drawCircle(color = Color(0xFF7F4D2E), radius = 20f, center = Offset(beanX, beanY - 32f))
+                    // Fade haircut with crisp hairline
+                    drawCircle(color = Color(0xFF151515), radius = 20f, center = Offset(beanX, beanY - 40f))
+                    // Tortoise round glasses
+                    drawCircle(color = Color(0xFF4A2A14), radius = 5.5f, center = Offset(beanX - 6f, beanY - 32f), style = Stroke(width = 1.8f))
+                    drawCircle(color = Color(0xFF4A2A14), radius = 5.5f, center = Offset(beanX + 6f, beanY - 32f), style = Stroke(width = 1.8f))
+                    drawLine(color = Color(0xFF4A2A14), start = Offset(beanX - 1f, beanY - 32f), end = Offset(beanX + 1f, beanY - 32f), strokeWidth = 1.8f)
+                    // Eyes with gleam
+                    drawCircle(color = Color.White, radius = 3f, center = Offset(beanX - 6f, beanY - 32f))
+                    drawCircle(color = Ink, radius = 2f, center = Offset(beanX - 6f, beanY - 32f))
+                    drawCircle(color = Color.White, radius = 3f, center = Offset(beanX + 6f, beanY - 32f))
+                    drawCircle(color = Ink, radius = 2f, center = Offset(beanX + 6f, beanY - 32f))
+                    // Sleek silver laptop on lap
+                    val lapPath = Path().apply {
+                        moveTo(beanX - 22f, beanY + 16f)
+                        lineTo(beanX + 22f, beanY + 16f)
+                        lineTo(beanX + 18f, beanY - 2f)
+                        lineTo(beanX - 18f, beanY - 2f)
+                        close()
+                    }
+                    drawPath(lapPath, color = Color(0xFFC5CAD8))
+                    // Glowing laptop screen edge
+                    drawLine(color = Color(0xAAFFFFFF), start = Offset(beanX - 16f, beanY - 1f), end = Offset(beanX + 16f, beanY - 1f), strokeWidth = 2f)
 
                     // 8. Record Player on right corner table
                     val recX = w * 0.88f

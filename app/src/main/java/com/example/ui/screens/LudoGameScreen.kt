@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -25,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.SentimentSatisfied
@@ -33,8 +35,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,6 +49,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,35 +74,213 @@ import com.example.ui.theme.JoyMarigold
 import com.example.ui.theme.KolaTeal
 import com.example.ui.theme.Plum
 import com.example.ui.theme.PlumDeep
+import com.example.ui.theme.Sage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+// 52-cell track as defined in Prompt 6 (15x15 board coordinate map)
+val LUDO_TRACK_COORDS = listOf(
+    Pair(6, 1), Pair(6, 2), Pair(6, 3), Pair(6, 4), Pair(6, 5), Pair(5, 6), Pair(4, 6), Pair(3, 6), Pair(2, 6), Pair(1, 6), Pair(0, 6), Pair(0, 7), Pair(0, 8),
+    Pair(1, 8), Pair(2, 8), Pair(3, 8), Pair(4, 8), Pair(5, 8), Pair(6, 9), Pair(6, 10), Pair(6, 11), Pair(6, 12), Pair(6, 13), Pair(6, 14), Pair(7, 14), Pair(8, 14),
+    Pair(8, 13), Pair(8, 12), Pair(8, 11), Pair(8, 10), Pair(8, 9), Pair(9, 8), Pair(10, 8), Pair(11, 8), Pair(12, 8), Pair(13, 8), Pair(14, 8), Pair(14, 7), Pair(14, 6),
+    Pair(13, 6), Pair(12, 6), Pair(11, 6), Pair(10, 6), Pair(9, 6), Pair(8, 5), Pair(8, 4), Pair(8, 3), Pair(8, 2), Pair(8, 1), Pair(8, 0), Pair(7, 0), Pair(6, 0)
+)
+
+val LUDO_SAFE_CELLS = setOf(0, 8, 13, 21, 26, 34, 39, 47)
+val LUDO_START_CELLS = listOf(39, 13) // Seat 0 (Kola) starts at 39, Seat 1 (Joy) starts at 13
+
+// Home columns (5 steps to center)
+val LUDO_HOME_COLUMNS = listOf(
+    listOf(Pair(13, 7), Pair(12, 7), Pair(11, 7), Pair(10, 7), Pair(9, 7)), // Seat 0 (Kola)
+    listOf(Pair(1, 7), Pair(2, 7), Pair(3, 7), Pair(4, 7), Pair(5, 7))     // Seat 1 (Joy)
+)
+
+// Yard positions
+val LUDO_YARD_SLOTS = listOf(
+    listOf(Pair(10, 1), Pair(10, 4), Pair(13, 1), Pair(13, 4)), // Seat 0 (Kola, bottom-left)
+    listOf(Pair(1, 10), Pair(1, 13), Pair(4, 10), Pair(4, 13))  // Seat 1 (Joy, top-right)
+)
 
 @Composable
 fun LudoGameScreen(
-    onBack: () -> Unit,
     partnerName: String = "Joy",
-    onGameFinished: (winner: String) -> Unit = {},
+    onBack: () -> Unit,
+    onGameFinished: (winner: String, score: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    var diceValue by remember { mutableIntStateOf(5) }
-    var hasRolledThisTurn by remember { mutableStateOf(true) }
-    var currentTurn by remember { mutableStateOf("Kola") }
-    var lastMoveSummary by remember { mutableStateOf("$partnerName rolled 4 and moved a piece.") }
-    var kolaHomeCount by remember { mutableIntStateOf(1) }
-    var joyHomeCount by remember { mutableIntStateOf(2) }
+    // 0 = Kola (Teal), 1 = Joy (Marigold)
+    var currentSeat by remember { mutableIntStateOf(0) }
+    var phase by remember { mutableStateOf("roll") } // "roll" or "move"
+    var diceValue by remember { mutableIntStateOf(0) }
+    var isRollingAnimation by remember { mutableStateOf(false) }
+
+    // Piece positions: -1 (yard), 0..50 (track), 51..55 (home column), 56 (finished)
+    val kolaPieces = remember { mutableStateListOf(-1, -1, 0, -1) }
+    val joyPieces = remember { mutableStateListOf(-1, -1, 0, -1) }
+
+    var lastMoveSummary by remember { mutableStateOf("Game started. Roll the die to begin!") }
+    var winner by remember { mutableStateOf<String?>(null) }
+    var autoPlayPartner by remember { mutableStateOf(true) }
 
     var showMenuSheet by remember { mutableStateOf(false) }
     var showReactSheet by remember { mutableStateOf(false) }
 
-    // Pulsing amber ring for legal pieces (Screen 6)
+    val coroutineScope = rememberCoroutineScope()
+
+    // Pulse animation for movable pieces
     val ringPulse = remember { Animatable(1f) }
     LaunchedEffect(Unit) {
         ringPulse.animateTo(
-            targetValue = 1.25f,
+            targetValue = 1.3f,
             animationSpec = infiniteRepeatable(
                 animation = tween(700, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             )
         )
     }
+
+    // Helper: Check which pieces can legally move
+    fun getLegalPieces(seat: Int, roll: Int): List<Int> {
+        val pieces = if (seat == 0) kolaPieces else joyPieces
+        val legal = mutableListOf<Int>()
+        for (i in 0 until 4) {
+            val p = pieces[i]
+            if (p == -1 && roll == 6) {
+                legal.add(i)
+            } else if (p in 0..55) {
+                if (p + roll <= 56) {
+                    legal.add(i)
+                }
+            }
+        }
+        return legal
+    }
+
+    var triggerRoll: () -> Unit = {}
+
+    // Execute Move Logic with capturing and extra turns
+    fun executeMove(seat: Int, pieceIdx: Int, roll: Int) {
+        val pieces = if (seat == 0) kolaPieces else joyPieces
+        val opponentPieces = if (seat == 0) joyPieces else kolaPieces
+        val currentP = pieces[pieceIdx]
+
+        var extraTurn = false
+        val newP = if (currentP == -1) 0 else currentP + roll
+        pieces[pieceIdx] = newP
+
+        val playerName = if (seat == 0) "Kola" else partnerName
+        val oppName = if (seat == 0) partnerName else "Kola"
+
+        if (currentP == -1) {
+            lastMoveSummary = "$playerName rolled 6 and brought a piece out! 🚀"
+            extraTurn = true // rolling 6 grants another turn
+        } else if (newP == 56) {
+            lastMoveSummary = "$playerName moved a piece safely home! 🏆"
+            extraTurn = true // reaching home grants another turn
+        } else if (newP in 1..50) {
+            // Check capture
+            val absTrack = (LUDO_START_CELLS[seat] + newP) % 52
+            if (!LUDO_SAFE_CELLS.contains(absTrack)) {
+                // Check if opponent piece is here
+                for (opIdx in 0 until 4) {
+                    val oppP = opponentPieces[opIdx]
+                    if (oppP in 1..50) {
+                        val oppTrack = (LUDO_START_CELLS[1 - seat] + oppP) % 52
+                        if (oppTrack == absTrack) {
+                            opponentPieces[opIdx] = -1 // Captured!
+                            lastMoveSummary = "$playerName captured $oppName's piece! 💥 Extra turn!"
+                            extraTurn = true
+                            break
+                        }
+                    }
+                }
+            }
+            if (!extraTurn) {
+                lastMoveSummary = "$playerName moved piece $roll spaces."
+            }
+        } else {
+            lastMoveSummary = "$playerName moved closer to home."
+        }
+
+        // Check Win Condition
+        if (pieces.all { it == 56 }) {
+            winner = playerName
+            lastMoveSummary = "🎉 $playerName wins the Ludo match!"
+            onGameFinished(playerName, "4-0")
+            return
+        }
+
+        // Handle Turn Transition
+        if (extraTurn) {
+            phase = "roll"
+            // If it's AI turn, auto roll
+            if (seat == 1 && autoPlayPartner) {
+                coroutineScope.launch {
+                    delay(1000)
+                    triggerRoll()
+                }
+            }
+        } else {
+            currentSeat = 1 - currentSeat
+            phase = "roll"
+            if (currentSeat == 1 && autoPlayPartner) {
+                coroutineScope.launch {
+                    delay(1200)
+                    triggerRoll()
+                }
+            }
+        }
+    }
+
+    // Roll Function
+    triggerRoll = {
+        if (phase == "roll" && !isRollingAnimation) {
+            isRollingAnimation = true
+
+            coroutineScope.launch {
+                // Roll animation cycles dice
+                for (i in 0..6) {
+                    diceValue = (1..6).random()
+                    delay(60)
+                }
+                isRollingAnimation = false
+
+                val legal = getLegalPieces(currentSeat, diceValue)
+                val playerName = if (currentSeat == 0) "Kola" else partnerName
+
+                if (legal.isEmpty()) {
+                    lastMoveSummary = "$playerName rolled $diceValue. No legal move available."
+                    if (diceValue == 6) {
+                        phase = "roll"
+                        if (currentSeat == 1 && autoPlayPartner) {
+                            delay(1000)
+                            triggerRoll()
+                        }
+                    } else {
+                        currentSeat = 1 - currentSeat
+                        phase = "roll"
+                        if (currentSeat == 1 && autoPlayPartner) {
+                            delay(1200)
+                            triggerRoll()
+                        }
+                    }
+                } else if (legal.size == 1 && (currentSeat == 1 && autoPlayPartner)) {
+                    phase = "move"
+                    delay(600)
+                    executeMove(currentSeat, legal.first(), diceValue)
+                } else if (currentSeat == 1 && autoPlayPartner) {
+                    phase = "move"
+                    delay(800)
+                    val best = legal.maxByOrNull { joyPieces[it] } ?: legal.first()
+                    executeMove(currentSeat, best, diceValue)
+                } else {
+                    phase = "move"
+                }
+            }
+        }
+    }
+
+    val legalPiecesNow = if (phase == "move") getLegalPieces(currentSeat, diceValue) else emptyList()
 
     Box(
         modifier = modifier
@@ -133,14 +317,20 @@ fun LudoGameScreen(
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = if (currentTurn == "Kola") "Your turn" else "$partnerName's turn",
+                                text = if (winner != null) "Game Over"
+                                else if (currentSeat == 0) "Your turn" else "$partnerName's turn",
                                 fontFamily = FontFamily.Serif,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp,
+                                fontSize = 18.sp,
                                 color = Ink
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Amber))
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (currentSeat == 0) KolaTeal else JoyMarigold)
+                            )
                         }
 
                         IconButton(onClick = { showMenuSheet = true }, modifier = Modifier.size(24.dp)) {
@@ -149,7 +339,9 @@ fun LudoGameScreen(
                     }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = if (hasRolledThisTurn) "Tap a glowing piece to move $diceValue spaces" else "Roll the die to start your move",
+                        text = if (winner != null) "🎉 $winner won the match!"
+                        else if (phase == "roll") "Tap 'Roll' to roll the die"
+                        else "Tap a glowing piece to move $diceValue spaces",
                         fontSize = 12.sp,
                         color = InkMuted
                     )
@@ -158,15 +350,18 @@ fun LudoGameScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 2. Players Bar: Kola (You) vs Joy (Screen 6)
+            // 2. Players Bar: Kola vs Joy
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // You (Kola) Card
+                val kolaHome = kolaPieces.count { it == 56 }
+                val joyHome = joyPieces.count { it == 56 }
+
+                // Kola Card
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = Cream,
+                    color = if (currentSeat == 0) Cream else CreamDeep.copy(alpha = 0.8f),
                     modifier = Modifier.weight(1f),
                     tonalElevation = 3.dp
                 ) {
@@ -176,28 +371,27 @@ fun LudoGameScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(34.dp)
                                 .clip(CircleShape)
-                                .border(2.dp, KolaTeal, CircleShape)
-                                .background(Color(0xFF7F4D2E)),
+                                .background(KolaTeal),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("K", color = Cream, fontWeight = FontWeight.Bold)
+                            Text("K", color = Cream, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            Text("You", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Ink)
+                            Text("Kola (You)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink)
                             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                                 for (i in 1..4) {
                                     Box(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(RoundedCornerShape(2.dp))
-                                            .background(if (i <= kolaHomeCount) KolaTeal else CreamDeep)
+                                            .background(if (i <= kolaHome) KolaTeal else Color(0x332F9E9A))
                                     )
                                 }
                             }
-                            Text("Home $kolaHomeCount of 4", fontSize = 10.sp, color = InkMuted)
+                            Text("Home $kolaHome of 4", fontSize = 10.sp, color = InkMuted)
                         }
                     }
                 }
@@ -205,7 +399,7 @@ fun LudoGameScreen(
                 // Joy Card
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = Cream,
+                    color = if (currentSeat == 1) Cream else CreamDeep.copy(alpha = 0.8f),
                     modifier = Modifier.weight(1f),
                     tonalElevation = 3.dp
                 ) {
@@ -215,28 +409,27 @@ fun LudoGameScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(34.dp)
                                 .clip(CircleShape)
-                                .border(2.dp, JoyMarigold, CircleShape)
-                                .background(Color(0xFF98603A)),
+                                .background(JoyMarigold),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("J", color = Cream, fontWeight = FontWeight.Bold)
+                            Text("J", color = Cream, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            Text(partnerName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Ink)
+                            Text(partnerName, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Ink)
                             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                                 for (i in 1..4) {
                                     Box(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(RoundedCornerShape(2.dp))
-                                            .background(if (i <= joyHomeCount) JoyMarigold else CreamDeep)
+                                            .background(if (i <= joyHome) JoyMarigold else Color(0x33F4A93A))
                                     )
                                 }
                             }
-                            Text("Home $joyHomeCount of 4", fontSize = 10.sp, color = InkMuted)
+                            Text("Home $joyHome of 4", fontSize = 10.sp, color = InkMuted)
                         }
                     }
                 }
@@ -244,7 +437,7 @@ fun LudoGameScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 3. 15x15 Ludo Board (Screen 6)
+            // 3. 15x15 Interactive Ludo Board
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = Cream,
@@ -257,7 +450,7 @@ fun LudoGameScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(10.dp)
+                        .padding(8.dp)
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val w = size.width
@@ -265,34 +458,33 @@ fun LudoGameScreen(
                         val cellW = w / 15f
                         val cellH = h / 15f
 
-                        // Draw 4 Large Yards:
                         // Top-Left: Unused Gray
                         drawRoundRect(
-                            color = Color(0xFFDED6C8),
+                            color = Color(0xFFDDD5C7),
                             topLeft = Offset(0f, 0f),
                             size = androidx.compose.ui.geometry.Size(cellW * 6, cellH * 6),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f)
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(10f)
                         )
                         // Top-Right: Joy's Marigold Yard
                         drawRoundRect(
                             color = JoyMarigold,
                             topLeft = Offset(cellW * 9, 0f),
                             size = androidx.compose.ui.geometry.Size(cellW * 6, cellH * 6),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f)
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(10f)
                         )
                         // Bottom-Left: Kola's Teal Yard
                         drawRoundRect(
                             color = KolaTeal,
                             topLeft = Offset(0f, cellH * 9),
                             size = androidx.compose.ui.geometry.Size(cellW * 6, cellH * 6),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f)
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(10f)
                         )
                         // Bottom-Right: Unused Gray
                         drawRoundRect(
-                            color = Color(0xFFDED6C8),
+                            color = Color(0xFFDDD5C7),
                             topLeft = Offset(cellW * 9, cellH * 9),
                             size = androidx.compose.ui.geometry.Size(cellW * 6, cellH * 6),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f)
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(10f)
                         )
 
                         // Center Finish Box & Triangles
@@ -301,13 +493,6 @@ fun LudoGameScreen(
                             topLeft = Offset(cellW * 6, cellH * 6),
                             size = androidx.compose.ui.geometry.Size(cellW * 3, cellH * 3)
                         )
-                        val topTri = Path().apply {
-                            moveTo(cellW * 6, cellH * 6)
-                            lineTo(cellW * 9, cellH * 6)
-                            lineTo(cellW * 7.5f, cellH * 7.5f)
-                            close()
-                        }
-                        drawPath(topTri, color = Color(0xFFE07A5F))
                         val leftTri = Path().apply {
                             moveTo(cellW * 6, cellH * 6)
                             lineTo(cellW * 6, cellH * 9)
@@ -315,6 +500,7 @@ fun LudoGameScreen(
                             close()
                         }
                         drawPath(leftTri, color = KolaTeal)
+
                         val rightTri = Path().apply {
                             moveTo(cellW * 9, cellH * 6)
                             lineTo(cellW * 9, cellH * 9)
@@ -322,26 +508,21 @@ fun LudoGameScreen(
                             close()
                         }
                         drawPath(rightTri, color = JoyMarigold)
-                        val botTri = Path().apply {
-                            moveTo(cellW * 6, cellH * 9)
-                            lineTo(cellW * 9, cellH * 9)
-                            lineTo(cellW * 7.5f, cellH * 7.5f)
-                            close()
-                        }
-                        drawPath(botTri, color = Color(0xFF3D5A80))
 
-                        // Draw Grid lines for middle tracks
-                        for (r in 0..15) {
-                            for (c in 0..15) {
+                        // Draw Grid Tracks
+                        for (r in 0..14) {
+                            for (c in 0..14) {
                                 val inYard = (r < 6 && c < 6) || (r < 6 && c >= 9) || (r >= 9 && c < 6) || (r >= 9 && c >= 9)
                                 val inCenter = r in 6..8 && c in 6..8
                                 if (!inYard && !inCenter) {
-                                    // Track square
-                                    val isJoyTrack = (c == 7 && r < 6) || (r == 1 && c == 8)
-                                    val isKolaTrack = (c == 7 && r >= 9) || (r == 13 && c == 6)
+                                    val isJoyHomeTrack = (c == 7 && r in 1..5)
+                                    val isKolaHomeTrack = (c == 7 && r in 9..13)
+                                    val isJoyStart = (r == 1 && c == 8)
+                                    val isKolaStart = (r == 13 && c == 6)
+
                                     val tileColor = when {
-                                        isJoyTrack -> JoyMarigold.copy(alpha = 0.5f)
-                                        isKolaTrack -> KolaTeal.copy(alpha = 0.5f)
+                                        isJoyHomeTrack || isJoyStart -> JoyMarigold.copy(alpha = 0.4f)
+                                        isKolaHomeTrack || isKolaStart -> KolaTeal.copy(alpha = 0.4f)
                                         else -> CreamDeep
                                     }
                                     drawRect(
@@ -353,66 +534,105 @@ fun LudoGameScreen(
                             }
                         }
 
-                        // Joy Yard Tokens (J)
-                        val joyYardTokens = listOf(
-                            Offset(cellW * 10.5f, cellH * 2f),
-                            Offset(cellW * 13.5f, cellH * 2f),
-                            Offset(cellW * 10.5f, cellH * 4f),
-                            Offset(cellW * 13.5f, cellH * 4f)
-                        )
-                        for (pos in joyYardTokens) {
-                            drawCircle(color = JoyMarigold, radius = cellW * 0.45f, center = pos)
-                            drawCircle(color = Color(0x33000000), radius = cellW * 0.45f, center = pos, style = Stroke(width = 2f))
+                        // Draw Star on Safe cells
+                        LUDO_SAFE_CELLS.forEach { trackIdx ->
+                            val (r, c) = LUDO_TRACK_COORDS[trackIdx]
+                            drawCircle(
+                                color = Amber,
+                                radius = cellW * 0.2f,
+                                center = Offset((c + 0.5f) * cellW, (r + 0.5f) * cellH)
+                            )
                         }
 
-                        // Kola Yard Tokens (K)
-                        val kolaYardTokens = listOf(
-                            Offset(cellW * 2f, cellH * 10.5f),
-                            Offset(cellW * 4.5f, cellH * 10.5f),
-                            Offset(cellW * 2f, cellH * 13f),
-                            Offset(cellW * 4.5f, cellH * 13f)
-                        )
-                        for (pos in kolaYardTokens) {
-                            drawCircle(color = KolaTeal, radius = cellW * 0.45f, center = pos)
+                        // Draw Kola Pieces
+                        for (i in 0 until 4) {
+                            val p = kolaPieces[i]
+                            val coords = when {
+                                p == -1 -> LUDO_YARD_SLOTS[0][i]
+                                p in 0..50 -> {
+                                    val trackIdx = (LUDO_START_CELLS[0] + p) % 52
+                                    LUDO_TRACK_COORDS[trackIdx]
+                                }
+                                p in 51..55 -> LUDO_HOME_COLUMNS[0][p - 51]
+                                else -> Pair(7, 7) // in finish
+                            }
+
+                            val center = Offset((coords.second + 0.5f) * cellW, (coords.first + 0.5f) * cellH)
+                            val isLegal = currentSeat == 0 && phase == "move" && legalPiecesNow.contains(i)
+
+                            if (isLegal) {
+                                drawCircle(
+                                    color = Amber,
+                                    radius = cellW * 0.55f * ringPulse.value,
+                                    center = center,
+                                    style = Stroke(width = 3.dp.toPx())
+                                )
+                            }
+
+                            drawCircle(color = KolaTeal, radius = cellW * 0.42f, center = center)
+                            drawCircle(color = Color.White, radius = cellW * 0.42f, center = center, style = Stroke(width = 1.5f))
                         }
 
-                        // Active Pieces on Track
-                        // Kola glowing piece at [10.5, 7.5]
-                        val kolaActivePos = Offset(cellW * 4.5f, cellH * 10.5f)
-                        drawCircle(
-                            color = Amber.copy(alpha = 0.6f),
-                            radius = cellW * 0.6f * ringPulse.value,
-                            center = kolaActivePos,
-                            style = Stroke(width = 3.dp.toPx())
-                        )
+                        // Draw Joy Pieces
+                        for (i in 0 until 4) {
+                            val p = joyPieces[i]
+                            val coords = when {
+                                p == -1 -> LUDO_YARD_SLOTS[1][i]
+                                p in 0..50 -> {
+                                    val trackIdx = (LUDO_START_CELLS[1] + p) % 52
+                                    LUDO_TRACK_COORDS[trackIdx]
+                                }
+                                p in 51..55 -> LUDO_HOME_COLUMNS[1][p - 51]
+                                else -> Pair(7, 7)
+                            }
 
-                        val kolaActive2 = Offset(cellW * 7.5f, cellH * 11.5f)
-                        drawCircle(color = KolaTeal, radius = cellW * 0.45f, center = kolaActive2)
-                        drawCircle(
-                            color = Amber.copy(alpha = 0.6f),
-                            radius = cellW * 0.6f * ringPulse.value,
-                            center = kolaActive2,
-                            style = Stroke(width = 3.dp.toPx())
-                        )
+                            val center = Offset((coords.second + 0.5f) * cellW, (coords.first + 0.5f) * cellH)
+                            val isLegal = currentSeat == 1 && phase == "move" && legalPiecesNow.contains(i)
+
+                            if (isLegal) {
+                                drawCircle(
+                                    color = Amber,
+                                    radius = cellW * 0.55f * ringPulse.value,
+                                    center = center,
+                                    style = Stroke(width = 3.dp.toPx())
+                                )
+                            }
+
+                            drawCircle(color = JoyMarigold, radius = cellW * 0.42f, center = center)
+                            drawCircle(color = Color.White, radius = cellW * 0.42f, center = center, style = Stroke(width = 1.5f))
+                        }
                     }
 
-                    // Interactive touch overlays for moving pieces
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable {
-                                if (hasRolledThisTurn) {
-                                    hasRolledThisTurn = false
-                                    lastMoveSummary = "You moved your piece $diceValue spaces!"
+                    // Touch Handlers for Legal Movable Pieces
+                    if (phase == "move") {
+                        val activePieces = if (currentSeat == 0) kolaPieces else joyPieces
+                        legalPiecesNow.forEach { pieceIdx ->
+                            val p = activePieces[pieceIdx]
+                            val coords = when {
+                                p == -1 -> LUDO_YARD_SLOTS[currentSeat][pieceIdx]
+                                p in 0..50 -> {
+                                    val trackIdx = (LUDO_START_CELLS[currentSeat] + p) % 52
+                                    LUDO_TRACK_COORDS[trackIdx]
                                 }
+                                p in 51..55 -> LUDO_HOME_COLUMNS[currentSeat][p - 51]
+                                else -> Pair(7, 7)
                             }
-                    )
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable {
+                                        executeMove(currentSeat, pieceIdx, diceValue)
+                                    }
+                            )
+                        }
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 4. Controls Card: Die & Roll Button (Screen 6)
+            // 4. Controls Card: Die & Roll Button
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Cream,
@@ -426,13 +646,19 @@ fun LudoGameScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 3D Die face with 5 dots
+                    // 3D Die face
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = Color.White,
                             shadowElevation = 4.dp,
-                            modifier = Modifier.size(46.dp)
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clickable {
+                                    if (phase == "roll" && (currentSeat == 0 || !autoPlayPartner)) {
+                                        triggerRoll()
+                                    }
+                                }
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
@@ -442,7 +668,8 @@ fun LudoGameScreen(
                                         3 -> "⚂"
                                         4 -> "⚃"
                                         5 -> "⚄"
-                                        else -> "⚅"
+                                        6 -> "⚅"
+                                        else -> "🎲"
                                     },
                                     fontSize = 32.sp,
                                     color = Ink
@@ -450,36 +677,42 @@ fun LudoGameScreen(
                             }
                         }
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "You rolled $diceValue",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = Ink
-                        )
+                        Column {
+                            Text(
+                                text = if (diceValue > 0) "Rolled: $diceValue" else "Roll to start",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = Ink
+                            )
+                            if (phase == "move") {
+                                Text(
+                                    text = "Tap a glowing piece",
+                                    fontSize = 11.sp,
+                                    color = KolaTeal,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
 
-                    // Disabled Roll button when already rolled (Screen 6 exact style)
+                    // Roll button
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        OutlinedButton(
-                            onClick = {
-                                if (!hasRolledThisTurn) {
-                                    diceValue = (1..6).random()
-                                    hasRolledThisTurn = true
-                                }
-                            },
-                            enabled = !hasRolledThisTurn,
+                        Button(
+                            onClick = { triggerRoll() },
+                            enabled = phase == "roll" && !isRollingAnimation && (currentSeat == 0 || !autoPlayPartner),
                             shape = RoundedCornerShape(999.dp),
-                            modifier = Modifier.height(40.dp).testTag("ludo_roll_button")
+                            colors = ButtonDefaults.buttonColors(containerColor = Amber),
+                            modifier = Modifier.height(42.dp).testTag("ludo_roll_button")
                         ) {
                             Text(
-                                text = "Roll",
+                                text = if (isRollingAnimation) "Rolling..." else "Roll",
                                 fontWeight = FontWeight.Bold,
-                                color = if (!hasRolledThisTurn) Ink else InkMuted
+                                color = Ink
                             )
                         }
-                        if (hasRolledThisTurn) {
+                        if (phase == "move") {
                             Text(
-                                text = "(already rolled this turn)",
+                                text = "(already rolled)",
                                 fontSize = 10.sp,
                                 color = InkMuted
                             )
@@ -494,16 +727,17 @@ fun LudoGameScreen(
             Text(
                 text = lastMoveSummary,
                 fontSize = 12.sp,
-                color = CreamDeep,
-                textAlign = TextAlign.Center
+                color = Cream,
+                textAlign = TextAlign.Center,
+                fontWeight = FontWeight.Medium
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 6. Bottom Action Bar: React & Talk Buttons
+            // 6. Bottom Action Bar: React & Talk
             Row(
                 modifier = Modifier
-                    .fillMaxWidth(0.65f)
+                    .fillMaxWidth(0.70f)
                     .clip(RoundedCornerShape(999.dp))
                     .background(Cream)
                     .padding(vertical = 6.dp, horizontal = 14.dp),
@@ -522,12 +756,14 @@ fun LudoGameScreen(
                 Box(modifier = Modifier.width(1.dp).height(18.dp).background(InkMuted.copy(alpha = 0.3f)))
 
                 Row(
-                    modifier = Modifier.clickable { },
+                    modifier = Modifier.clickable {
+                        // Toggle partner auto play for local testing
+                        autoPlayPartner = !autoPlayPartner
+                        lastMoveSummary = if (autoPlayPartner) "Joy AI companion enabled" else "Pass-and-play enabled"
+                    },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Mic, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Talk", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Ink)
+                    Text(if (autoPlayPartner) "🤖 Auto Joy" else "👥 2-Player", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Ink)
                 }
             }
         }
@@ -536,12 +772,23 @@ fun LudoGameScreen(
     if (showMenuSheet) {
         AlertDialog(
             onDismissRequest = { showMenuSheet = false },
-            title = { Text("Game Options", fontWeight = FontWeight.Bold) },
+            title = { Text("Ludo Match Options", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { showMenuSheet = false }) { Text("Game Rules") }
-                    TextButton(onClick = { showMenuSheet = false }) { Text("Offer a Draw") }
-                    TextButton(onClick = { showMenuSheet = false }) { Text("Pause Game") }
+                    Text("• Need 6 to leave yard.\n• Rolling 6, capturing, or reaching home grants an extra turn.\n• Stars are safe zones (no capture).", fontSize = 12.sp, color = InkMuted)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    TextButton(onClick = {
+                        kolaPieces.fill(-1)
+                        joyPieces.fill(-1)
+                        kolaPieces[0] = 0
+                        joyPieces[0] = 0
+                        currentSeat = 0
+                        phase = "roll"
+                        diceValue = 0
+                        winner = null
+                        lastMoveSummary = "Game reset. Kola to roll."
+                        showMenuSheet = false
+                    }) { Text("Restart Game", color = Amber, fontWeight = FontWeight.Bold) }
                     TextButton(onClick = {
                         showMenuSheet = false
                         onBack()
@@ -565,10 +812,12 @@ fun LudoGameScreen(
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = CreamDeep,
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                lastMoveSummary = "You reacted: $react"
-                                showReactSheet = false
-                            }
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    lastMoveSummary = "You sent: $react"
+                                    showReactSheet = false
+                                }
                         ) {
                             Text(text = react, modifier = Modifier.padding(12.dp), fontWeight = FontWeight.SemiBold)
                         }

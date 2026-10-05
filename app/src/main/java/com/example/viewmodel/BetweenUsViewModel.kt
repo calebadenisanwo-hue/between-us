@@ -255,6 +255,13 @@ class BetweenUsViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun updateNextVisitDate(epochMillis: Long, label: String = "Reunion in the same room ✨") {
+        val current = hangoutState.value
+        viewModelScope.launch {
+            repository.updateHangoutState(current.copy(nextVisitEpochMillis = epochMillis, nextVisitLabel = label))
+        }
+    }
+
     fun recordGame(gameType: String, kolaScore: Int, joyScore: Int, winner: String?, summary: String) {
         viewModelScope.launch {
             repository.saveGameRecord(
